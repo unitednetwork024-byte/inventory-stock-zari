@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ZariInventory</string>
+    <string name="title_activity_main">ZariInventory</string>
+    <string name="package_name">com.zari.inventory</string>
+    <string name="custom_url_scheme">com.zari.inventory</string>
+</resources>

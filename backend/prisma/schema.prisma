@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Karigar {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String
+  address    String?
+  specialty  String?
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  workOrders WorkOrder[]
+  payments   Payment[]
+}
+
+model Product {
+  id            String          @id @default(uuid())
+  name          String
+  type          String
+  description   String?
+  image         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  workOrderItems WorkOrderItem[]
+}
+
+model WorkOrder {
+  id          String   @id @default(uuid())
+  karigarId   String
+  status      String   @default("PENDING")
+  deadline    DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  karigar     Karigar  @relation(fields: [karigarId], references: [id])
+  items       WorkOrderItem[]
+  receipts    Receipt[]
+}
+
+model WorkOrderItem {
+  id          String    @id @default(uuid())
+  workOrderId String
+  productId   String
+  quantity    Int
+  ratePerPiece Float
+  receivedQty Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id])
+  receiptItems ReceiptItem[]
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  karigarId String
+  amount    Float
+  type      String
+  date      DateTime @default(now())
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  karigar   Karigar  @relation(fields: [karigarId], references: [id])
+}
+
+model Receipt {
+  id          String    @id @default(uuid())
+  workOrderId String
+  date        DateTime  @default(now())
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
+  items       ReceiptItem[]
+}
+
+model ReceiptItem {
+  id            String    @id @default(uuid())
+  receiptId     String
+  workOrderItemId String
+  quantity      Int
+  qualityNotes  String?
+  createdAt     DateTime  @default(now())
+  receipt       Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  workOrderItem WorkOrderItem @relation(fields: [workOrderItemId], references: [id])
+}
