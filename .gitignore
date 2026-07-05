@@ -35,3 +35,9 @@ Thumbs.db
 *.gif
 *.bmp
 *.ico
+
+# Whitelist Capacitor Android & iOS resources
+!web/android/app/src/main/res/**/*.png
+!web/android/app/src/main/res/**/*.xml
+!web/ios/App/App/Assets.xcassets/**/*.png
+!web/app/favicon.ico
