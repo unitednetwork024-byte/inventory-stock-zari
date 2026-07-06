@@ -80,13 +80,87 @@ export default function WorkOrdersPage() {
     if (!form.karigarId) return alert('Select a karigar');
     if (items.some(i => !i.productId)) return alert('Select products for all items');
     try {
+      // 1. Fetch the karigar's history to calculate previous pending balances
+      const historyRes = await api.get(`/karigars/${form.karigarId}/history`);
+      const pastOrders = historyRes.data.workOrders || [];
+      const karigar = karigars.find(k => k.id === form.karigarId);
+      
+      // Calculate balances for each item before saving
+      const itemsWithBalances = items.map(item => {
+        const product = products.find(p => p.id === item.productId);
+        
+        let prevBalance = 0;
+        pastOrders.forEach((wo: any) => {
+          if (wo.status !== 'CANCELLED') {
+            (wo.items || []).forEach((woItem: any) => {
+              if (woItem.productId === item.productId) {
+                prevBalance += (woItem.quantity - (woItem.receivedQty || 0));
+              }
+            });
+          }
+        });
+        
+        const addedToday = Number(item.quantity);
+        const newTotalBalance = prevBalance + addedToday;
+        
+        return {
+          productName: product ? `${product.name} (${product.type})` : 'Product',
+          prevBalance,
+          addedToday,
+          newTotalBalance
+        };
+      });
+
+      // 2. Save the new work order
       await api.post('/work-orders', {
         ...form,
         items: items.map(i => ({ productId: i.productId, quantity: Number(i.quantity), ratePerPiece: Number(i.ratePerPiece) })),
       });
+      
       setShowModal(false);
       fetchWorkOrders();
-    } catch (err: any) { alert(err.response?.data?.error || 'Failed to create'); }
+
+      // 3. Construct and open the WhatsApp link
+      if (karigar && karigar.phone) {
+        const dateStr = new Date().toLocaleDateString('en-GB'); // DD/MM/YYYY
+        
+        let message = `*Zari Inventory Management*\n`;
+        message += `*New Work Order Created*\n\n`;
+        message += `*Karigar:* ${karigar.name}\n`;
+        message += `*Date:* ${dateStr}\n`;
+        if (form.deadline) {
+          const deadlineDate = new Date(form.deadline).toLocaleDateString('en-GB');
+          message += `*Deadline:* ${deadlineDate}\n`;
+        }
+        message += `\n*Suit Balance Details:*\n`;
+        
+        itemsWithBalances.forEach((item, index) => {
+          message += `${index + 1}. *${item.productName}*\n`;
+          message += `   - Previous Balance: ${item.prevBalance}\n`;
+          message += `   - Added Today: +${item.addedToday}\n`;
+          message += `   - Total Balance: ${item.newTotalBalance}\n\n`;
+        });
+        
+        if (form.notes) {
+          message += `*Notes:* ${form.notes}\n\n`;
+        }
+        
+        message += `Thank you!`;
+
+        // Format phone
+        let cleanedPhone = karigar.phone.replace(/\D/g, '');
+        if (cleanedPhone.startsWith('0')) {
+          cleanedPhone = '91' + cleanedPhone.slice(1);
+        } else if (cleanedPhone.length === 10) {
+          cleanedPhone = '91' + cleanedPhone;
+        }
+
+        const url = `https://api.whatsapp.com/send?phone=${cleanedPhone}&text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to create');
+    }
   };
 
   const handleDelete = async (id: string) => {
