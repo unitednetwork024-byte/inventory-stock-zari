@@ -13,6 +13,7 @@ export default function ReceiptsPage() {
   const [showModal, setShowModal] = useState(false);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [selectedWO, setSelectedWO] = useState<any>(null);
+  const [selectedKarigarId, setSelectedKarigarId] = useState<string>('');
   const [form, setForm] = useState({ workOrderId: '', date: '', notes: '' });
   const [receiptItems, setReceiptItems] = useState<any[]>([]);
   const [activeReceiptId, setActiveReceiptId] = useState<string | null>(null);
@@ -39,27 +40,68 @@ export default function ReceiptsPage() {
 
   const openCreate = () => {
     setForm({ workOrderId: '', date: new Date().toISOString().split('T')[0], notes: '' });
+    setSelectedKarigarId('');
     setReceiptItems([]);
     setSelectedWO(null);
     setShowModal(true);
   };
 
-  const selectWorkOrder = async (woId: string) => {
-    setForm({ ...form, workOrderId: woId });
-    if (!woId) { setSelectedWO(null); setReceiptItems([]); return; }
-    try {
-      const res = await api.get(`/work-orders/${woId}`);
-      const wo = res.data;
-      setSelectedWO(wo);
-      setReceiptItems(wo.items?.map((item: any) => ({
-        workOrderItemId: item.id,
-        productName: item.product?.name,
-        assignedQty: item.quantity,
-        receivedQty: item.receivedQty,
+  const selectKarigar = (karigarId: string) => {
+    setSelectedKarigarId(karigarId);
+    if (!karigarId) { setReceiptItems([]); return; }
+
+    // Find all active work orders for this Karigar
+    const activeWOsForKarigar = workOrders.filter(
+      wo => wo.karigarId === karigarId && wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+    );
+
+    // Group items by product
+    const productItemsMap = new Map();
+    activeWOsForKarigar.forEach(wo => {
+      (wo.items || []).forEach((item: any) => {
+        const pid = item.productId;
+        const pending = item.quantity - (item.receivedQty || 0);
+        if (pending > 0) {
+          if (!productItemsMap.has(pid)) {
+            productItemsMap.set(pid, {
+              productId: pid,
+              productName: item.product ? `${item.product.name} (${item.product.type})` : 'Product',
+              assignedQty: 0,
+              receivedQty: 0,
+              pendingQty: 0,
+              matchingItems: []
+            });
+          }
+          const group = productItemsMap.get(pid);
+          group.assignedQty += item.quantity;
+          group.receivedQty += (item.receivedQty || 0);
+          group.pendingQty += pending;
+          group.matchingItems.push({
+            workOrderId: wo.id,
+            workOrderItemId: item.id,
+            pending,
+            createdAt: wo.createdAt
+          });
+        }
+      });
+    });
+
+    const receiptItemsList = Array.from(productItemsMap.values()).map(group => {
+      // Sort matching items oldest first
+      group.matchingItems.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      return {
+        productId: group.productId,
+        productName: group.productName,
+        assignedQty: group.assignedQty,
+        receivedQty: group.receivedQty,
+        pendingQty: group.pendingQty,
         quantity: 0,
         qualityNotes: '',
-      })) || []);
-    } catch { alert('Failed to load work order'); }
+        matchingItems: group.matchingItems
+      };
+    });
+
+    setReceiptItems(receiptItemsList);
   };
 
   const updateReceiptItem = (idx: number, field: string, value: any) => {
@@ -70,20 +112,71 @@ export default function ReceiptsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.workOrderId) return alert('Select a work order');
-    const validItems = receiptItems.filter(i => i.quantity > 0);
+    if (!selectedKarigarId) return alert('Select a karigar');
+    const validItems = receiptItems.filter(i => Number(i.quantity) > 0);
     if (validItems.length === 0) return alert('Enter quantity for at least one item');
+
+    // Group allocations by workOrderId
+    const allocationsByWorkOrder: { [woId: string]: any[] } = {};
+
+    validItems.forEach(item => {
+      let qtyToDistribute = Number(item.quantity);
+      
+      for (const match of item.matchingItems) {
+        if (qtyToDistribute <= 0) break;
+        
+        const allocatedQty = Math.min(match.pending, qtyToDistribute);
+        qtyToDistribute -= allocatedQty;
+
+        if (!allocationsByWorkOrder[match.workOrderId]) {
+          allocationsByWorkOrder[match.workOrderId] = [];
+        }
+        allocationsByWorkOrder[match.workOrderId].push({
+          workOrderItemId: match.workOrderItemId,
+          quantity: allocatedQty,
+          qualityNotes: item.qualityNotes || ''
+        });
+      }
+
+      if (qtyToDistribute > 0) {
+        const lastMatch = item.matchingItems[item.matchingItems.length - 1];
+        if (lastMatch) {
+          const allocation = allocationsByWorkOrder[lastMatch.workOrderId].find(
+            a => a.workOrderItemId === lastMatch.workOrderItemId
+          );
+          if (allocation) {
+            allocation.quantity += qtyToDistribute;
+          }
+        }
+      }
+    });
+
     try {
-      const res = await api.post('/receipts', {
-        ...form,
-        items: validItems.map(i => ({ workOrderItemId: i.workOrderItemId, quantity: Number(i.quantity), qualityNotes: i.qualityNotes })),
-      });
+      setLoading(true);
+      let lastReceiptId = '';
+      
+      for (const woId of Object.keys(allocationsByWorkOrder)) {
+        const res = await api.post('/receipts', {
+          workOrderId: woId,
+          date: form.date,
+          notes: form.notes,
+          items: allocationsByWorkOrder[woId]
+        });
+        lastReceiptId = res.data.id;
+      }
+
       setShowModal(false);
       fetchReceipts();
-      // Open the new receipt challan for print/share
-      setActiveReceiptId(res.data.id);
-      setIsReceiptOpen(true);
-    } catch (err: any) { alert(err.response?.data?.error || 'Failed to save'); }
+
+      if (lastReceiptId) {
+        setActiveReceiptId(lastReceiptId);
+        setIsReceiptOpen(true);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to save receipt');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -190,14 +283,39 @@ export default function ReceiptsPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Work Order *</label>
-                  <select required value={form.workOrderId} onChange={(e) => selectWorkOrder(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none">
-                    <option value="">Select Work Order</option>
-                    {workOrders.map(wo => (
-                      <option key={wo.id} value={wo.id}>
-                        {wo.karigar?.name} - {wo.status?.replace('_', ' ')} ({wo.items?.length || 0} items)
-                      </option>
-                    ))}
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Karigar *</label>
+                  <select required value={selectedKarigarId} onChange={(e) => selectKarigar(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none">
+                    <option value="">Select Karigar</option>
+                    {(() => {
+                      const uniqueWOs: any[] = [];
+                      const seenIds = new Set();
+                      workOrders.forEach(wo => {
+                        if (!seenIds.has(wo.id)) {
+                          seenIds.add(wo.id);
+                          uniqueWOs.push(wo);
+                        }
+                      });
+
+                      const uniqueKarigarsMap = new Map();
+                      uniqueWOs.forEach(wo => {
+                        if (wo.karigar && wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED') {
+                          const kid = wo.karigar.id;
+                          if (!uniqueKarigarsMap.has(kid)) {
+                            uniqueKarigarsMap.set(kid, {
+                              karigarId: kid,
+                              karigarName: wo.karigar.name,
+                              workOrdersCount: 0
+                            });
+                          }
+                          uniqueKarigarsMap.get(kid).workOrdersCount += 1;
+                        }
+                      });
+                      return Array.from(uniqueKarigarsMap.values()).map(k => (
+                        <option key={k.karigarId} value={k.karigarId}>
+                          {k.karigarName} - Pending Orders ({k.workOrdersCount})
+                        </option>
+                      ));
+                    })()}
                   </select>
                 </div>
                 <div>
