@@ -9,7 +9,6 @@ interface GoodsReceivedReceiptModalProps {
   onClose: () => void;
   receiptId: string | null;
 }
-
 export default function GoodsReceivedReceiptModal({
   isOpen,
   onClose,
@@ -17,10 +16,12 @@ export default function GoodsReceivedReceiptModal({
 }: GoodsReceivedReceiptModalProps) {
   const [receipt, setReceipt] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [karigarHistory, setKarigarHistory] = useState<any>(null);
 
   useEffect(() => {
     if (!isOpen || !receiptId) {
       setReceipt(null);
+      setKarigarHistory(null);
       return;
     }
 
@@ -28,7 +29,13 @@ export default function GoodsReceivedReceiptModal({
       setLoading(true);
       try {
         const res = await api.get(`/receipts/${receiptId}`);
-        setReceipt(res.data);
+        const rData = res.data;
+        setReceipt(rData);
+
+        if (rData.workOrder?.karigar?.id) {
+          const histRes = await api.get(`/karigars/${rData.workOrder.karigar.id}/history`);
+          setKarigarHistory(histRes.data);
+        }
       } catch (err) {
         console.error('Failed to fetch receipt details:', err);
         alert('Failed to load receipt details');
@@ -55,6 +62,21 @@ export default function GoodsReceivedReceiptModal({
     : 'N/A';
   const receiptNo = `REC-${receiptId.slice(0, 8).toUpperCase()}`;
 
+  const getPendingBalance = (productId: string) => {
+    if (!karigarHistory || !karigarHistory.workOrders) return 0;
+    let balance = 0;
+    karigarHistory.workOrders.forEach((wo: any) => {
+      if (wo.status !== 'CANCELLED') {
+        (wo.items || []).forEach((item: any) => {
+          if (item.productId === productId) {
+            balance += (item.quantity - (item.receivedQty || 0));
+          }
+        });
+      }
+    });
+    return balance;
+  };
+
   const formatWhatsAppPhone = (num: string) => {
     if (!num) return '';
     let cleaned = num.replace(/\D/g, '');
@@ -68,25 +90,29 @@ export default function GoodsReceivedReceiptModal({
 
   const getWhatsAppMessage = () => {
     if (!receipt) return '';
-    const itemsList = (receipt.items || [])
-      .map(
-        (item: any) =>
-          `- ${item.quantity} × ${item.workOrderItem?.product?.name || 'Product'} (${item.workOrderItem?.product?.type || ''})`
-      )
-      .join('\n');
-    const notesStr = receipt.notes ? `*Notes:* ${receipt.notes}` : '';
-
-    return `*Zari Inventory Management*
-*Goods Received Receipt*
-
-*Receipt No:* ${receiptNo}
-*Karigar:* ${name}
-*Date:* ${dateStr}
-
-*Received Items:*
-${itemsList}
-
-${notesStr ? `${notesStr}\n` : ''}Thank you for your hard work!`;
+    
+    let message = `*Receipt Order:* ${receiptNo}\n`;
+    message += `*SHABAB ZARI ART*\n`;
+    message += `*Date:* ${dateStr}\n\n`;
+    message += `*Received Items:*\n`;
+    
+    (receipt.items || []).forEach((item: any, index: number) => {
+      const prodName = item.workOrderItem?.product?.name || 'Product';
+      const prodType = item.workOrderItem?.product?.type || '';
+      const pId = item.workOrderItem?.productId;
+      const remainingBalance = pId ? getPendingBalance(pId) : 0;
+      
+      message += `${index + 1}. *${prodName} (${prodType})*\n`;
+      message += `   - Receive (प्राप्त): ${item.quantity}\n`;
+      message += `   - Balance: ${remainingBalance}\n\n`;
+    });
+    
+    if (receipt.notes) {
+      message += `*Notes:* ${receipt.notes}\n\n`;
+    }
+    
+    message += `Thank you for your hard work!`;
+    return message;
   };
 
   const handleWhatsApp = () => {

@@ -234,17 +234,64 @@ export default function ReceiptsPage() {
                           <FileText size={16} />
                         </button>
                         <button
-                          onClick={() => {
-                            const phone = r.workOrder?.karigar?.phone || '';
-                            const name = r.workOrder?.karigar?.name || '';
-                            const cleanedPhone = phone.replace(/\D/g, '');
-                            const targetPhone = cleanedPhone.startsWith('0') ? '91' + cleanedPhone.slice(1) : (cleanedPhone.length === 10 ? '91' + cleanedPhone : cleanedPhone);
-                            const dateStr = new Date(r.date).toLocaleDateString();
-                            const receiptNo = `REC-${r.id ? r.id.slice(0, 8).toUpperCase() : 'TEMP'}`;
-                            const itemsList = (r.items || []).map((item: any) => `- ${item.quantity} × ${item.workOrderItem?.product?.name || 'Product'} (${item.workOrderItem?.product?.type || ''})`).join('\n');
-                            const notesStr = r.notes ? `*Notes:* ${r.notes}` : '';
-                            const message = `*Zari Inventory Management*\n*Goods Received Receipt*\n\n*Receipt No:* ${receiptNo}\n*Karigar:* ${name}\n*Date:* ${dateStr}\n\n*Received Items:*\n${itemsList}\n\n${notesStr ? `${notesStr}\n` : ''}Thank you for your hard work!`;
-                            window.open(`https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(message)}`, '_blank');
+                          onClick={async () => {
+                            try {
+                              const kId = r.workOrder?.karigar?.id;
+                              if (!kId) return;
+                              const histRes = await api.get(`/karigars/${kId}/history`);
+                              const hist = histRes.data;
+
+                              const getPendingBalance = (productId: string) => {
+                                if (!hist || !hist.workOrders) return 0;
+                                let balance = 0;
+                                hist.workOrders.forEach((wo: any) => {
+                                  if (wo.status !== 'CANCELLED') {
+                                    (wo.items || []).forEach((item: any) => {
+                                      if (item.productId === productId) {
+                                        balance += (item.quantity - (item.receivedQty || 0));
+                                      }
+                                    });
+                                  }
+                                });
+                                return balance;
+                              };
+
+                              const phone = r.workOrder?.karigar?.phone || '';
+                              const name = r.workOrder?.karigar?.name || '';
+                              const cleanedPhone = phone.replace(/\D/g, '');
+                              const targetPhone = cleanedPhone.startsWith('0') ? '91' + cleanedPhone.slice(1) : (cleanedPhone.length === 10 ? '91' + cleanedPhone : cleanedPhone);
+                              const dateStr = new Date(r.date).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              });
+                              const receiptNo = `REC-${r.id ? r.id.slice(0, 8).toUpperCase() : 'TEMP'}`;
+
+                              let message = `*Receipt Order:* ${receiptNo}\n`;
+                              message += `*SHABAB ZARI ART*\n`;
+                              message += `*Date:* ${dateStr}\n\n`;
+                              message += `*Received Items:*\n`;
+
+                              (r.items || []).forEach((item: any, index: number) => {
+                                const prodName = item.workOrderItem?.product?.name || 'Product';
+                                const prodType = item.workOrderItem?.product?.type || '';
+                                const pId = item.workOrderItem?.productId;
+                                const remainingBalance = pId ? getPendingBalance(pId) : 0;
+
+                                message += `${index + 1}. *${prodName} (${prodType})*\n`;
+                                message += `   - Receive (प्राप्त): ${item.quantity}\n`;
+                                message += `   - Balance: ${remainingBalance}\n\n`;
+                              });
+
+                              if (r.notes) {
+                                message += `*Notes:* ${r.notes}\n\n`;
+                              }
+
+                              message += `Thank you for your hard work!`;
+                              window.open(`https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(message)}`, '_blank');
+                            } catch (err) {
+                              alert('Failed to generate WhatsApp message');
+                            }
                           }}
                           title="Send WhatsApp Receipt"
                           className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
