@@ -216,7 +216,7 @@ export default function ReceiptsPage() {
               ) : (
                 receipts.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 text-slate-800 font-mono text-sm">{r.workOrderId.slice(0, 8)}...</td>
+                    <td className="px-6 py-4 text-slate-800 font-mono text-sm font-semibold">{r.workOrderId.startsWith('WO-') ? r.workOrderId : `${r.workOrderId.slice(0, 8)}...`}</td>
                     <td className="px-6 py-4 font-medium text-slate-800">{r.workOrder?.karigar?.name}</td>
                     <td className="px-6 py-4 text-slate-600">{r.items?.length || 0} items</td>
                     <td className="px-6 py-4 text-slate-600">{new Date(r.date).toLocaleDateString()}</td>
@@ -265,7 +265,7 @@ export default function ReceiptsPage() {
                                 month: '2-digit',
                                 year: 'numeric'
                               });
-                              const receiptNo = `REC-${r.id ? r.id.slice(0, 8).toUpperCase() : 'TEMP'}`;
+                              const receiptNo = r.id ? (r.id.startsWith('RO-') ? r.id : `REC-${r.id.slice(0, 8).toUpperCase()}`) : 'TEMP';
 
                               let message = `*Receipt Order:* ${receiptNo}\n`;
                               message += `*SHABAB ZARI ART*\n`;

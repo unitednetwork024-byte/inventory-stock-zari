@@ -112,7 +112,7 @@ export default function WorkOrdersPage() {
       });
 
       // 2. Save the new work order
-      await api.post('/work-orders', {
+      const res = await api.post('/work-orders', {
         ...form,
         items: items.map(i => ({ productId: i.productId, quantity: Number(i.quantity), ratePerPiece: Number(i.ratePerPiece) })),
       });
@@ -123,9 +123,10 @@ export default function WorkOrdersPage() {
       // 3. Construct and open the WhatsApp link
       if (karigar && karigar.phone) {
         const dateStr = new Date().toLocaleDateString('en-GB'); // DD/MM/YYYY
+        const newWorkOrderId = res.data?.id || 'WO-01';
         
-        let message = `*Zari Inventory Management*\n`;
-        message += `*New Work Order Created*\n\n`;
+        let message = `*Work Order:* ${newWorkOrderId}\n`;
+        message += `*SHABAB ZARI ART*\n`;
         message += `*Karigar:* ${karigar.name}\n`;
         message += `*Date:* ${dateStr}\n`;
         if (form.deadline) {
@@ -136,9 +137,8 @@ export default function WorkOrdersPage() {
         
         itemsWithBalances.forEach((item, index) => {
           message += `${index + 1}. *${item.productName}*\n`;
-          message += `   - Previous Balance: ${item.prevBalance}\n`;
-          message += `   - Added Today: +${item.addedToday}\n`;
-          message += `   - Total Balance: ${item.newTotalBalance}\n\n`;
+          message += `   - Order (जारी): ${item.addedToday}\n`;
+          message += `   - Balance: ${item.newTotalBalance}\n\n`;
         });
         
         if (form.notes) {
@@ -233,6 +233,7 @@ export default function WorkOrdersPage() {
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Order ID</th>
                     <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Karigar</th>
                     <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Items</th>
                     <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Status</th>
@@ -243,12 +244,13 @@ export default function WorkOrdersPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">Loading...</td></tr>
+                    <tr><td colSpan={7} className="text-center py-8 text-slate-400">Loading...</td></tr>
                   ) : workOrders.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">No work orders</td></tr>
+                    <tr><td colSpan={7} className="text-center py-8 text-slate-400">No work orders</td></tr>
                   ) : (
                     workOrders.map((wo) => (
                       <tr key={wo.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-slate-800 font-mono text-sm font-semibold">{wo.id.startsWith('WO-') ? wo.id : `${wo.id.slice(0, 8)}...`}</td>
                         <td className="px-6 py-4 font-medium text-slate-800">{wo.karigar?.name}</td>
                         <td className="px-6 py-4 text-slate-600">{wo.items?.length || 0} items</td>
                         <td className="px-6 py-4">
@@ -445,7 +447,7 @@ export default function WorkOrdersPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 rounded-t-2xl">
               <div>
-                <h2 className="text-xl font-bold text-slate-800">Work Order — {showDetail.karigar?.name}</h2>
+                <h2 className="text-xl font-bold text-slate-800">Work Order [{showDetail.id.startsWith('WO-') ? showDetail.id : showDetail.id.slice(0, 8).toUpperCase()}] — {showDetail.karigar?.name}</h2>
                 <p className="text-sm text-slate-500">Created {new Date(showDetail.createdAt).toLocaleDateString()}{showDetail.deadline ? ` · Deadline ${new Date(showDetail.deadline).toLocaleDateString()}` : ''}</p>
               </div>
               <div className="flex items-center gap-3">

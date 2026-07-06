@@ -89,6 +89,36 @@ const generateUUID = () => {
   });
 };
 
+const generateWorkOrderId = (existingWorkOrders: any[]) => {
+  let maxNum = 0;
+  existingWorkOrders.forEach(wo => {
+    if (wo.id && wo.id.startsWith('WO-')) {
+      const numPart = parseInt(wo.id.substring(3));
+      if (!isNaN(numPart) && numPart > maxNum) {
+        maxNum = numPart;
+      }
+    }
+  });
+  const nextNum = maxNum + 1;
+  const formattedNum = nextNum < 10 ? `0${nextNum}` : `${nextNum}`;
+  return `WO-${formattedNum}`;
+};
+
+const generateReceiptId = (existingReceipts: any[]) => {
+  let maxNum = 0;
+  existingReceipts.forEach(r => {
+    if (r.id && r.id.startsWith('RO-')) {
+      const numPart = parseInt(r.id.substring(3));
+      if (!isNaN(numPart) && numPart > maxNum) {
+        maxNum = numPart;
+      }
+    }
+  });
+  const nextNum = maxNum + 1;
+  const formattedNum = nextNum < 10 ? `0${nextNum}` : `${nextNum}`;
+  return `RO-${formattedNum}`;
+};
+
 // Database helper functions with generic type support
 function getDB<T>(key: string, defaultValue: T[] = []): T[] {
   if (typeof window === 'undefined') return defaultValue;
@@ -745,7 +775,7 @@ const mockAPI = {
       }));
 
       const newWO: WorkOrder = {
-        id: generateUUID(),
+        id: generateWorkOrderId(workOrders),
         karigarId: body.karigarId,
         deadline: body.deadline ? new Date(body.deadline).toISOString() : null,
         notes: body.notes || '',
@@ -806,7 +836,7 @@ const mockAPI = {
       wo.updatedAt = new Date().toISOString();
 
       const newReceipt: Receipt = {
-        id: generateUUID(),
+        id: generateReceiptId(receipts),
         workOrderId,
         date: date ? new Date(date).toISOString() : new Date().toISOString(),
         notes: notes || '',

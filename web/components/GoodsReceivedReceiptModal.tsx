@@ -60,7 +60,7 @@ export default function GoodsReceivedReceiptModal({
         year: 'numeric',
       })
     : 'N/A';
-  const receiptNo = `REC-${receiptId.slice(0, 8).toUpperCase()}`;
+  const receiptNo = receiptId.startsWith('RO-') ? receiptId : `REC-${receiptId.slice(0, 8).toUpperCase()}`;
 
   const getPendingBalance = (productId: string) => {
     if (!karigarHistory || !karigarHistory.workOrders) return 0;
@@ -198,7 +198,7 @@ export default function GoodsReceivedReceiptModal({
                   <p className="font-semibold text-slate-800 mt-1">{receiptNo}</p>
                   <p className="text-xs text-slate-500 mt-1">Date: {dateStr}</p>
                   <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    WO: {receipt.workOrderId.slice(0, 8).toUpperCase()}
+                    WO: {receipt.workOrderId.startsWith('WO-') ? receipt.workOrderId : receipt.workOrderId.slice(0, 8).toUpperCase()}
                   </p>
                 </div>
                 <div className="text-right">
